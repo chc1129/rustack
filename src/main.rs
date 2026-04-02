@@ -25,3 +25,21 @@ fn add(stack: &mut Vec<i32>) {
   let rhs = stack.pop().unwrap();
   stack.push(lhs + rhs);
 }
+
+fn sub(stack: &mut Vec<i32>) {
+  let rhs = stack.pop().unwrap();
+  let lhs = stack.pop().unwrap();
+  stack.push(lhs - rhs);
+}
+
+fn mul(stack: &mut Vec<i32>) {
+  let rhs = stack.pop().unwrap();
+  let lhs = stack.pop().unwrap();
+  stack.push(lhs * rhs);
+}
+
+fn div(stack: &mut Vec<i32>) {
+  let rhs = stack.pop().unwrap();
+  let lhs = stack.pop().unwrap();
+  stack.push(lhs / rhs);
+}
