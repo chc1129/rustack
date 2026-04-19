@@ -1,7 +1,10 @@
+use std::collections::HashMap;
+
 #[derive(Debug, PartialEq, Eq)]
 enum Value<'src> {
   Num(i32),
   Op(&'src str),
+  Sym(&'src str),
   Block(Vec<Value<'src>>),
 }
 
@@ -10,6 +13,35 @@ impl<'src> Value<'src> {
     match self {
       Self::Num(val) => *val,
       _ => panic!("Value is not a number"),
+    }
+  }
+
+  fn to_block(self) -> Vec<Value<'src>> {
+    match self {
+      Self::Block(val) => val,
+      _ => panic!("Value is not a block"),
+    }
+  }
+
+  fn as_sym(&self) -> &'src str {
+    if let Self::Sym(sym) = self {
+      *sym
+    } else {
+      panc!("Value is not a symbol");
+    }
+  }
+}
+
+struct Vm<'src> {
+  stack: Vec<Value<'src>>,
+  vars: HashMap<&'src str, Value<'src>>,
+}
+
+impl<'src> Vm<'src> {
+  fn new() -> Self {
+    Self {
+      stack: vec![],
+      vars: HashMap::new(),
     }
   }
 }
@@ -25,7 +57,7 @@ fn parse<'a>(line: &'a str) -> Vec<Value> {
   let input: Vec<_> = line.split(" ").collect();
   let mut words = &input[..];
 
-  while let SOme((&word, mut rest)) = words.split_first() {
+  while let Some((&word, mut rest)) = words.split_first() {
     if word.is_empty() {
       break;
     }
@@ -36,6 +68,8 @@ fn parse<'a>(line: &'a str) -> Vec<Value> {
     } else {
       let code = if let Ok(num) = word.parse::<i32>() {
         Value::Num(num)
+      } else if word.starts_with("/") {
+        Value::Sym(&word[1..])
       } else {
         Value:Op(word)
       };
@@ -46,46 +80,74 @@ fn parse<'a>(line: &'a str) -> Vec<Value> {
 
   println!("stack: {stack:?}");
 
-  stack
+  vm.stack
 }
 
-fn eval<'src>(code: Value<'src>, stack: &mut Vec<Value<'src>>) {
+fn eval<'src>(code: Value<'src>, vm: &mut Vm<'src>) {
   match code {
     Value::Op(op) -> match op {
-      "+" => add(stack),
-      "-" => sub(stack),
-      "*" => mul(stack),
-      "/" => div(stack),
-      "if" => op_if(stack),
-      _ => panic!("{op:?} could not be parsed"),
+      "+" => add(&mut vm.stack),
+      "-" => sub(&mut vm.stack),
+      "*" => mul(&mut vm.stack),
+      "/" => div(&mut vm.stack),
+      "<" => lt(&mut vm.stack),
+      "if" => op_if(vm),
+      "def" => op_def(vm),
+      _ => {
+        let val = vm.vars.get(op).expect(&format!(
+            "{op:?} is not a defined operation"
+        ));
+        vm.stack.push(val.clone());
+      }
     },
-    _ => stack.push(code.clone()),
+    _ => vm.stack.push(code.clone()),
   }
 }
 
-fn add(stack: &mut Vec<i32>) {
-  let lhs = stack.pop().unwrap();
-  let rhs = stack.pop().unwrap();
-  stack.push(lhs + rhs);
+fn parse_block<'src, 'a>(
+  input: &'a [&'src str],
+) -> (Value<'src>, &'a [&'src str]) {
+  let mut tokens = vec![];
+  let mut words = input;
+
+  while let Some((&word, mut rest)) = words.split_first() {
+    if word.is_empty() {
+      break;
+    }
+    if word == "{" {
+      let value;
+      (value, rest) = parse_block(rest);
+      tokens.push(value);
+    } else if word == "}" {
+      return (Value::Block(tokens), rest);
+    } else if let Ok(value) = word.parse::<i32>() {
+      tokens.push(Value::Num(value));
+    } else {
+      tokens.push(Value::Op(word));
+    }
+    words = rest;
+  }
+
+  println!("stack: {:?}", vm.stack);
+
+  vm.stack
 }
 
-fn sub(stack: &mut Vec<i32>) {
-  let rhs = stack.pop().unwrap();
-  let lhs = stack.pop().unwrap();
-  stack.push(lhs - rhs);
+macro_rules! impl_op {
+  {$name:ident, $op::tt} => {
+    fn $name(stack: &mut Vec<Value>) {
+      let rhs = stack.pop().unwrap().as_num();
+      let lhs = stack.pop().unwrap().as_num();
+      stack.push(Value::Num((lhs $op rhs) as i32));
+    }
+  }
 }
 
-fn mul(stack: &mut Vec<i32>) {
-  let rhs = stack.pop().unwrap();
-  let lhs = stack.pop().unwrap();
-  stack.push(lhs * rhs);
-}
-
-fn div(stack: &mut Vec<i32>) {
-  let rhs = stack.pop().unwrap();
-  let lhs = stack.pop().unwrap();
-  stack.push(lhs / rhs);
-}
+impl_op!(add, +);
+impl_op!(sub, -);
+impl_op!(mul, *);
+impl_op!(div, /);
+impl_op!(lt, <);
 
 fn op_if(stack: &mut Vec<Value>) {
   let false_branch = stack.pop().unwrap().to_block();
